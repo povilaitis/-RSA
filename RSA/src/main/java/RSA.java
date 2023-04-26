@@ -4,57 +4,43 @@ import javax.swing.*;
 import java.io.*;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.util.Random;
 
-
-public class RSA extends JFrame {
-
-
+public class RSA extends JFrame implements ActionListener {
     private JTextField pTextField;
     private JTextField qTextField;
     private JTextArea xTextArea;
     private JTextArea resultTextArea;
+    private JButton encryptButton;
+    private JButton decryptButton;
 
-    private int p, q,n, phiN, e;
+    private int p;
+    private int q;
+    private int n;
+    private int phiN;
+    private int e;
 
 
     public RSA() {
-        setTitle("RSA");
+        setTitle("RSA Encryption System");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
-
-
-        JPanel inputPanel = new JPanel(new GridLayout(4, 3));
-        inputPanel.setPreferredSize(new Dimension(300, 400));
 
         pTextField = new JTextField();
         qTextField = new JTextField();
         xTextArea = new JTextArea();
-        JButton encryptButton = new JButton("Encrypt");
-        JButton decryptButton = new JButton("Decrypt");
-
-        encryptButton.setPreferredSize(new Dimension(150, 150));
-        decryptButton.setPreferredSize(new Dimension(150, 150));
-
-        encryptButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                encrypt();
-            }
-        });
-        decryptButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                decrypt();
-            }
-        });
-
+        encryptButton = new JButton("Encrypt");
+        decryptButton = new JButton("Decrypt");
         resultTextArea = new JTextArea();
         resultTextArea.setEditable(false);
 
 
+        JPanel inputPanel = new JPanel(new GridLayout(4, 2));
         inputPanel.add(new JLabel("p:"));
         inputPanel.add(pTextField);
         inputPanel.add(new JLabel("q:"));
         inputPanel.add(qTextField);
-        inputPanel.add(new JLabel("User message:"));
+        inputPanel.add(new JLabel("Text x:"));
         inputPanel.add(xTextArea);
         inputPanel.add(encryptButton);
         inputPanel.add(decryptButton);
@@ -62,9 +48,21 @@ public class RSA extends JFrame {
         add(inputPanel, BorderLayout.NORTH);
         add(new JScrollPane(resultTextArea), BorderLayout.CENTER);
 
+        encryptButton.addActionListener(this);
+        decryptButton.addActionListener(this);
+
         pack();
         setLocationRelativeTo(null);
     }
+
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == encryptButton) {
+            encrypt();
+        } else if (e.getSource() == decryptButton) {
+            decrypt();
+        }
+    }
+
 
     private void encrypt() {
         try {
@@ -76,7 +74,7 @@ public class RSA extends JFrame {
             phiN = (p - 1) * (q - 1);
             e = findCoprime(phiN);
 
-            byte[] xBytes = x.getBytes(StandardCharsets.UTF_8);
+            byte[] xBytes = x.getBytes(StandardCharsets.US_ASCII);
             String y = "";
 
             for (int i = 0; i < xBytes.length; i++) {
@@ -96,8 +94,7 @@ public class RSA extends JFrame {
         }
     }
 
-
-    private int modExp(int x, int e, int n) {
+    public static int modExp(int x, int e, int n) {
         int result = 1;
         while (e > 0) {
             if (e % 2 == 1) {
@@ -109,11 +106,14 @@ public class RSA extends JFrame {
         return result;
     }
 
-
     private void decrypt() {
         try {
             BufferedReader reader = new BufferedReader(new FileReader("encrypted.txt"));
             String line;
+            String y = null;
+            int publicKeyN = -1;
+            int publicKeyE = -1;
+
             while ((line = reader.readLine()) != null) {
                 String[] splitLine = line.split(": ");
                 if (splitLine.length < 2) {
@@ -122,69 +122,56 @@ public class RSA extends JFrame {
                 String key = splitLine[0];
                 String value = splitLine[1];
                 if (key.equals("message")) {
-                    String y = value;
-                    int publicKeyN = -1;
-                    int publicKeyE = -1;
-                    if ((line = reader.readLine()) != null) {
-                        splitLine = line.split(": ");
-                        if (splitLine.length < 2) {
-                            throw new IOException("Invalid input format");
-                        }
-                        key = splitLine[0];
-                        value = splitLine[1];
-                        if (key.equals("public key")) {
-                            String[] publicKeyValues = value.split(" ");
-                            if (publicKeyValues.length != 2) {
-                                throw new IOException("Invalid public key format");
-                            }
-                            publicKeyN = Integer.parseInt(publicKeyValues[0]);
-                            publicKeyE = Integer.parseInt(publicKeyValues[1]);
-                        }
+                    y = value;
+                } else if (key.equals("public key")) {
+                    String[] publicKeyValues = value.split(" ");
+                    if (publicKeyValues.length != 2) {
+                        throw new IOException("Invalid public key format");
                     }
-
-                    if (publicKeyN == -1 || publicKeyE == -1) {
-                        throw new IOException("Missing public key");
-                    }
-
-                    // factorize n to find p and q
-                    int p = -1;
-                    int q = -1;
-                    for (int i = 2; i < publicKeyN; i++) {
-                        if (publicKeyN % i == 0) {
-                            p = i;
-                            q = publicKeyN / i;
-                            break;
-                        }
-                    }
-                    if (p == -1 || q == -1) {
-                        throw new IOException("Unable to factorize n");
-                    }
-
-                    int phiN = (p - 1) * (q - 1);
-                    int d = findModularInverse(publicKeyE, phiN);
-
-                    byte[] decryptedBytes = new byte[y.length() / 2];
-
-                    for (int i = 0; i < y.length(); i += 2) {
-                        String encryptedValueStr = y.substring(i, i + 2);
-                        int encryptedValue = Integer.parseInt(encryptedValueStr, 16);
-                        int decryptedValue = modExp(encryptedValue, d, publicKeyN);
-                        decryptedBytes[i / 2] = (byte) decryptedValue;
-                    }
-
-                    String x = new String(decryptedBytes, StandardCharsets.UTF_8);
-
-                    BufferedWriter writer = new BufferedWriter(new FileWriter("decrypted.txt"));
-                    writer.write("message: " + x + "\n" + "private key: " + publicKeyN + " " + d);
-                    writer.close();
-
-                    resultTextArea.append("Decrypted text: " + x + "\n");
-                    resultTextArea.append("Private key ( n, d): (" + n + ", " + d + ")\n");
+                    publicKeyN = Integer.parseInt(publicKeyValues[0]);
+                    publicKeyE = Integer.parseInt(publicKeyValues[1]);
                 }
             }
-            reader.close();
-        } catch (NumberFormatException ex) {
-            resultTextArea.append("Error: Incorrect input data\n");
+
+            if (y == null || publicKeyN == -1 || publicKeyE == -1) {
+                throw new IOException("Missing message or public key");
+            }
+
+            int p = -1;
+            int q = -1;
+            for (int i = 2; i <= Math.sqrt(publicKeyN); i++) {
+                if (publicKeyN % i == 0) {
+                    p = i;
+                    q = publicKeyN / i;
+                    break;
+                }
+            }
+            if (p == -1 || q == -1) {
+                throw new IOException("Unable to factorize n");
+            }
+
+            int phiN = (p - 1) * (q - 1);
+            int d = modularInverse(publicKeyE, phiN);
+
+            if (y.length() % 2 != 0) {
+                throw new IOException("Invalid message length");
+            }
+
+            byte[] decryptedBytes = new byte[y.length() / 2];
+            for (int i = 0; i < decryptedBytes.length; i++) {
+                String hexByte = y.substring(i * 2, (i + 1) * 2);
+                int encryptedByte = Integer.parseInt(hexByte, 16);
+                int decryptedByte = modExp(encryptedByte, d, publicKeyN);
+                decryptedBytes[i] = (byte) decryptedByte;
+            }
+
+            String x = new String(decryptedBytes, StandardCharsets.US_ASCII);
+            resultTextArea.append("Decrypted text: " + x + "\n");
+
+            BufferedWriter writer = new BufferedWriter(new FileWriter("decrypted.txt"));
+            writer.write("message: " + x);
+            writer.close();
+
         } catch (IOException ex) {
             resultTextArea.append("Error: " + ex.getMessage() + "\n");
         }
@@ -193,13 +180,10 @@ public class RSA extends JFrame {
 
 
 
-    private int findModularInverse(int a, int m) {
+    private int modularInverse(int a, int m) {
         int m0 = m;
         int y = 0, x = 1;
         if (m <= 1) return 0;
-
-
-
 
         while (a > 1) {
             int q = a / m;
@@ -214,15 +198,22 @@ public class RSA extends JFrame {
         return x;
     }
 
-    private int findCoprime(int n) {
-
-        int e = 1;
-        BigInteger bigN = BigInteger.valueOf(n);
-        while (BigInteger.valueOf(e).gcd(bigN).intValue() != 1) {
-            e++;
-        }
+    private int findCoprime(int phiN) {
+        int e;
+        do {
+            e = (int) (Math.random() * (phiN - 3) + 3);  //e iesko
+        } while (gcd(e, phiN) != 1);
         return e;
     }
+
+    private int gcd(int a, int b) {
+        if (b == 0) {
+            return a;
+        } else {
+            return gcd(b, a % b);
+        }
+    }
+
 
     public static void main(String[] args) {
         RSA rsa = new RSA();
